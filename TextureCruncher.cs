@@ -154,7 +154,7 @@ public class TextureCruncher : EditorWindow
 		{
 			//find textures in all folders
 			var assets = AssetDatabase.FindAssets("t:texture", new[] { "Assets" }).Select(o => AssetImporter.GetAtPath(AssetDatabase.GUIDToAssetPath(o)) as TextureImporter);
-			var eligibleAssets = assets.Where(o => o != null).Where(o => o.compressionQuality != compressionQuality || !o.crunchedCompression);
+			var eligibleAssets = assets.Where(o => o != null).Where(o => o.compressionQuality != compressionQuality || _selected != o.maxTextureSize ||!o.crunchedCompression);
 
 			totalCount = (float)eligibleAssets.Count();
 			progressCount = 0f;
@@ -171,26 +171,29 @@ public class TextureCruncher : EditorWindow
 
 				Texture2D tex = AssetDatabase.LoadAssetAtPath(textureImporter.assetPath, typeof(Texture2D)) as Texture2D;
 
-				if (!IsDivisibleBy4(tex.width) || !IsDivisibleBy4(tex.height))
+				if(tex != null)
 				{
-					int width = tex.width;
-					int height = tex.height;
-
-					while (!IsDivisibleBy4(tex.width))
+					if (!IsDivisibleBy4(tex.width) || !IsDivisibleBy4(tex.height))
 					{
-						width++;
-						TextureScale.Scale(tex, width, tex.height);
-					}
-					while (!IsDivisibleBy4(tex.height))
-					{
-						height++;
-						TextureScale.Scale(tex, tex.width, height);
-					}
+						int width = tex.width;
+						int height = tex.height;
 
-					System.IO.File.WriteAllBytes(AssetDatabase.GetAssetPath(tex), tex.EncodeToPNG());
-					AssetDatabase.Refresh();
+						while (!IsDivisibleBy4(tex.width))
+						{
+							width++;
+							TextureScale.Scale(tex, width, tex.height);
+						}
+						while (!IsDivisibleBy4(tex.height))
+						{
+							height++;
+							TextureScale.Scale(tex, tex.width, height);
+						}
+
+						System.IO.File.WriteAllBytes(AssetDatabase.GetAssetPath(tex), tex.EncodeToPNG());
+						AssetDatabase.Refresh();
+					}
 				}
-
+				
 				textureImporter.textureCompression = TextureImporterCompression.Compressed; //Turn compression back on after resizing texture
 				textureImporter.compressionQuality = quality;
 				textureImporter.crunchedCompression = true;
