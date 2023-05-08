@@ -13,7 +13,7 @@ public class TextureCruncher : EditorWindow
 
 	string[] _options = new string[3] { "512", "1024", "2048" };
 	bool resourceFolderOnly = false;
-	Object singleSprite;
+	Object selectSprites;
 
 	IEnumerator jobRoutine;
 	IEnumerator messageRoutine;
@@ -68,9 +68,8 @@ public class TextureCruncher : EditorWindow
 		processingSpeed = EditorGUILayout.IntSlider("Processing speed:", processingSpeed, 1, 20);
 		this._selected = EditorGUILayout.Popup("Max Size", _selected, _options);
 		resourceFolderOnly = EditorGUILayout.Toggle("Resource folder only", resourceFolderOnly);
-		singleSprite = EditorGUILayout.ObjectField("Textures", singleSprite, typeof(Texture2D), false);
 
-		string buttonLabel = jobRoutine != null ? "Cancel" : "Begin";
+		string buttonLabel = jobRoutine != null ? "Cancel" : "Convert and Crunch all";
 		if (GUILayout.Button(buttonLabel))
 		{
 			if (jobRoutine != null)
@@ -84,8 +83,8 @@ public class TextureCruncher : EditorWindow
 			}
 		}
 
-		string buttonLabelConvert = "Convert and crunch single texture";
-		if (GUILayout.Button(buttonLabelConvert))
+		string buttonLabelMultiConvert = "Convert and crunch selected textures";
+		if (GUILayout.Button(buttonLabelMultiConvert))
 		{
 			if (jobRoutine != null)
 			{
@@ -94,7 +93,7 @@ public class TextureCruncher : EditorWindow
 			}
 			else
 			{
-				jobRoutine = CrunchSingleTexture();
+				jobRoutine = CrunchSelectedTextures();
 			}
 		}
 
@@ -159,70 +158,76 @@ public class TextureCruncher : EditorWindow
 
 		Exit:
 		_message = string.Empty;
+		yield return null;
 	}
 
-	IEnumerator CrunchSingleTexture()
+	IEnumerator CrunchSelectedTextures()
 	{
 		DisplayMessage(string.Empty);
 
 		int quality = compressionQuality;
+		Object[] selection = Selection.objects;
 
-		string assetPath = AssetDatabase.GetAssetPath(singleSprite);
-		TextureImporter textureImporter = (TextureImporter)TextureImporter.GetAtPath(assetPath);
-
-		textureImporter.isReadable = true; //make it readable so texture width/height can be adjusted
-		textureImporter.textureCompression = TextureImporterCompression.Uncompressed;   //If there is already crunch compression on the texture then it needs to be removed as texture can't be saved if compression is on.
-
-		AssetDatabase.ImportAsset(textureImporter.assetPath);
-
-		Texture2D tex = AssetDatabase.LoadAssetAtPath(textureImporter.assetPath, typeof(Texture2D)) as Texture2D;
-
-		if (tex != null)
+		for(int i = 0; i < selection.Length; i++)
 		{
-			if (!IsDivisibleBy4(tex.width) || !IsDivisibleBy4(tex.height))
+			string assetPath = AssetDatabase.GetAssetPath(selection[i]);
+			TextureImporter textureImporter = (TextureImporter)TextureImporter.GetAtPath(assetPath);
+
+			textureImporter.isReadable = true; //make it readable so texture width/height can be adjusted
+			textureImporter.textureCompression = TextureImporterCompression.Uncompressed;   //If there is already crunch compression on the texture then it needs to be removed as texture can't be saved if compression is on.
+
+			AssetDatabase.ImportAsset(textureImporter.assetPath);
+
+			Texture2D tex = AssetDatabase.LoadAssetAtPath(textureImporter.assetPath, typeof(Texture2D)) as Texture2D;
+
+			if (tex != null)
 			{
-				int width = tex.width;
-				int height = tex.height;
-
-				while (!IsDivisibleBy4(tex.width))
+				if (!IsDivisibleBy4(tex.width) || !IsDivisibleBy4(tex.height))
 				{
-					width++;
-					TextureScale.Scale(tex, width, tex.height);
-				}
-				while (!IsDivisibleBy4(tex.height))
-				{
-					height++;
-					TextureScale.Scale(tex, tex.width, height);
-				}
+					int width = tex.width;
+					int height = tex.height;
 
-				System.IO.File.WriteAllBytes(AssetDatabase.GetAssetPath(tex), tex.EncodeToPNG());
-				AssetDatabase.Refresh();
+					while (!IsDivisibleBy4(tex.width))
+					{
+						width++;
+						TextureScale.Scale(tex, width, tex.height);
+					}
+					while (!IsDivisibleBy4(tex.height))
+					{
+						height++;
+						TextureScale.Scale(tex, tex.width, height);
+					}
+
+					System.IO.File.WriteAllBytes(AssetDatabase.GetAssetPath(tex), tex.EncodeToPNG());
+					AssetDatabase.Refresh();
+				}
 			}
+
+			textureImporter.textureCompression = TextureImporterCompression.Compressed; //Turn compression back on after resizing texture
+			textureImporter.compressionQuality = quality;
+			textureImporter.crunchedCompression = true;
+			textureImporter.isReadable = false; //set it back to false so there's no internal duplicate texture
+
+			//determine max texture size
+			switch (_selected)
+			{
+			case 0:
+				textureImporter.maxTextureSize = 512;
+				break;
+			case 1:
+				textureImporter.maxTextureSize = 1024;
+				break;
+			case 2:
+				textureImporter.maxTextureSize = 2048;
+				break;
+			}
+
+			textureImporter.SaveAndReimport();
+
+			messageRoutine = DisplayMessage("Crunching complete!", 6f);
+			jobRoutine = null;
+
 		}
-
-		textureImporter.textureCompression = TextureImporterCompression.Compressed; //Turn compression back on after resizing texture
-		textureImporter.compressionQuality = quality;
-		textureImporter.crunchedCompression = true;
-		textureImporter.isReadable = false; //set it back to false so there's no internal duplicate texture
-
-		//determine max texture size
-		switch (_selected)
-		{
-		case 0:
-			textureImporter.maxTextureSize = 512;
-			break;
-		case 1:
-			textureImporter.maxTextureSize = 1024;
-			break;
-		case 2:
-			textureImporter.maxTextureSize = 2048;
-			break;
-		}
-
-		textureImporter.SaveAndReimport();
-
-		messageRoutine = DisplayMessage("Crunching complete!", 6f);
-		jobRoutine = null;
 
 		yield return null;
 	}
@@ -386,6 +391,7 @@ public class TextureCruncher : EditorWindow
 
 		messageRoutine = DisplayMessage("Crunching complete!", 6f);
 		jobRoutine = null;
+		yield return null;
 	}
 
 	private bool IsDivisibleBy4(int num)
@@ -413,7 +419,7 @@ public class TextureCruncher : EditorWindow
 
 			BilinearScale(0, newHeight);
 
-			tex.Resize(newWidth, newHeight);
+			tex.Reinitialize(newWidth, newHeight);
 			tex.SetPixels(newColors);
 			tex.Apply();
 		}
